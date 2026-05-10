@@ -1,0 +1,618 @@
+{% extends 'base.html' %}
+
+{% block title %}Загрузка{% endblock %}
+
+{% block content %}
+<div class="auth-wrapper">
+    <div class="auth-card upload-card" style="max-width: 600px;">
+
+        <!-- Выбор режима загрузки -->
+        <div class="upload-mode-selector" style="display: flex; gap: 10px; margin-bottom: 20px;">
+            <button type="button" id="simple-mode-btn" class="mode-btn active">
+                Быстрая (до 100MB)
+            </button>
+            <button type="button" id="chunk-mode-btn" class="mode-btn">
+                Большие файлы (до 100GB)
+            </button>
+        </div>
+
+        <form method="post" enctype="multipart/form-data" id="upload-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+            <!-- Зона для drag and drop -->
+            <div class="upload-area">
+                <div id="drop-zone" class="drop-zone" style="padding: 50px 20px; cursor: pointer;">
+                    <div class="drop-zone-content">
+                        <div class="upload-icon" style="font-size: 64px; margin-bottom: 20px;">#</div>
+                        <div style="font-size: 1.5rem; font-weight: 600; margin-bottom: 10px; color: var(--accent-color);">
+                            ПЕРЕТАЩИТЕ ФАЙЛЫ
+                        </div>
+                        <div style="font-size: 1.3rem; margin-bottom: 15px; color: var(--text-main);">
+                            СЮДА
+                        </div>
+                        <div style="font-size: 1rem; color: var(--text-muted);">
+                            или <span id="select-files-btn" style="color: var(--accent-color); text-decoration: underline; cursor: pointer;">нажмите для выбора</span>
+                        </div>
+                    </div>
+                </div>
+                <input type="file" name="files" id="file-input" multiple style="display: none;">
+            </div>
+
+            <!-- Счетчик -->
+            <div id="file-name" class="file-name-display" style="font-size: 1.1rem; padding: 15px; margin: 15px 0;">
+                Файлы не выбраны
+            </div>
+
+            <!-- Превью -->
+            <div id="preview-container" class="preview-container"></div>
+
+            <!-- Срок хранения -->
+            <div style="margin: 15px 0;">
+                <label style="color: var(--text-muted); font-size: 0.85rem;">Срок хранения:</label>
+                <select name="expiry_days" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.2); border: 1px solid var(--glass-border); border-radius: 8px; color: var(--text-main); margin-top: 5px;">
+                    <option value="0">Бессрочно</option>
+                    <option value="1">1 день</option>
+                    <option value="7">7 дней</option>
+                    <option value="30">30 дней</option>
+                    <option value="90">90 дней</option>
+                </select>
+            </div>
+
+            <textarea name="description" class="upload-description" placeholder="Добавьте подпись к файлам..." style="min-height: 100px; margin: 15px 0;"></textarea>
+
+            <!-- Прогресс для чанковой -->
+            <div id="chunk-progress-wrapper" style="display: none; margin: 20px 0;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9em;">
+                    <span id="chunk-progress-status" style="color: var(--accent-color);">Подготовка...</span>
+                    <span id="chunk-progress-percent" style="color: var(--accent-color);">0%</span>
+                </div>
+                <div style="width: 100%; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden;">
+                    <div id="chunk-progress-bar" style="width: 0%; height: 100%; background: var(--accent-color); transition: width 0.2s;"></div>
+                </div>
+                <div id="chunk-detail" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 8px; text-align: center;"></div>
+            </div>
+
+            <!-- Обычный прогресс -->
+            <div id="simple-progress-wrapper" style="display: none; margin: 20px 0;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9em;">
+                    <span id="simple-progress-status" style="color: var(--accent-color);">Загрузка...</span>
+                    <span id="simple-progress-percent" style="color: var(--accent-color);">0%</span>
+                </div>
+                <div style="width: 100%; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden;">
+                    <div id="simple-progress-bar" style="width: 0%; height: 100%; background: var(--accent-color); transition: width 0.2s;"></div>
+                </div>
+            </div>
+
+            <button type="submit" class="submit-btn" id="submit-btn" style="display: none;">
+                Загрузить
+            </button>
+        </form>
+    </div>
+</div>
+
+<style>
+    .mode-btn {
+        flex: 1;
+        padding: 10px;
+        border: 2px solid var(--glass-border);
+        background: transparent;
+        color: var(--text-muted);
+        border-radius: 30px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        font-weight: 600;
+    }
+    
+    .mode-btn.active {
+        background: linear-gradient(135deg, var(--accent-color), var(--accent-hover));
+        color: #0b1120;
+        border-color: var(--accent-color);
+    }
+    
+    .drop-zone {
+        border: 3px dashed var(--glass-border);
+        border-radius: 12px;
+        text-align: center;
+        background: rgba(255, 255, 255, 0.02);
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }
+    
+    .drop-zone:hover, .drop-zone.drag-active {
+        border-color: var(--accent-color);
+        background: rgba(var(--accent-rgb), 0.05);
+    }
+    
+    .file-name-display {
+        text-align: center;
+        padding: 10px;
+        background: var(--container-bg);
+        border-radius: 8px;
+        margin: 10px 0;
+        font-size: 0.9rem;
+        color: var(--text-muted);
+        word-break: break-all;
+    }
+    
+    .upload-description {
+        width: 100%;
+        padding: 12px;
+        border-radius: 8px;
+        border: 1px solid var(--glass-border);
+        background: rgba(15, 23, 42, 0.6);
+        color: var(--text-main);
+        resize: vertical;
+        min-height: 80px;
+        margin: 10px 0;
+        font-family: inherit;
+        font-size: 0.95rem;
+    }
+    
+    .submit-btn {
+        background: linear-gradient(135deg, var(--accent-color), var(--accent-hover));
+        color: #0b1120;
+        border: none;
+        border-radius: 30px;
+        padding: 14px 30px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        width: 100%;
+        transition: all 0.3s ease;
+    }
+    
+    .submit-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(var(--accent-rgb), 0.4);
+    }
+    
+    .submit-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+    }
+    
+    /* Галерея */
+    .image-gallery {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 12px;
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 12px;
+        background: rgba(0,0,0,0.15);
+    }
+    
+    .gallery-item {
+        position: relative;
+        border-radius: 10px;
+        overflow: hidden;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid var(--glass-border);
+        cursor: pointer;
+        transition: all 0.2s;
+        aspect-ratio: 1;
+    }
+    
+    .gallery-item:hover {
+        transform: translateY(-2px);
+        border-color: var(--accent-color);
+    }
+    
+    .gallery-item img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    
+    .gallery-info {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        padding: 8px 10px;
+        background: linear-gradient(transparent, rgba(0,0,0,0.9));
+        color: white;
+        font-size: 0.75rem;
+        opacity: 0;
+        transition: opacity 0.2s;
+    }
+    
+    .gallery-item:hover .gallery-info { opacity: 1; }
+    
+    .gallery-name {
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500;
+    }
+    
+    .gallery-size { font-size: 0.65rem; opacity: 0.7; margin-top: 2px; }
+    
+    .gallery-remove {
+        position: absolute;
+        top: 6px; right: 6px;
+        width: 24px; height: 24px;
+        border-radius: 50%;
+        background: rgba(239, 68, 68, 0.9);
+        color: white;
+        border: none;
+        cursor: pointer;
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 2;
+        opacity: 0;
+        transition: opacity 0.2s;
+    }
+    
+    .gallery-item:hover .gallery-remove { opacity: 1; }
+    
+    /* Превью для не-картинок */
+    .preview-container {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin: 10px 0;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+    
+    .file-card {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px;
+        background: rgba(255,255,255,0.03);
+        border-radius: 10px;
+        border: 1px solid var(--glass-border);
+    }
+    
+    .file-card-icon {
+        width: 40px; height: 40px;
+        border-radius: 8px;
+        background: var(--accent-dark);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.5rem; flex-shrink: 0;
+    }
+    
+    .file-card-info { flex: 1; min-width: 0; }
+    
+    .file-card-name {
+        font-weight: 500; font-size: 0.9rem;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    
+    .file-card-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+    
+    .file-card-remove {
+        width: 28px; height: 28px;
+        border-radius: 50%;
+        background: rgba(239, 68, 68, 0.2);
+        color: var(--error);
+        border: 1px solid var(--error);
+        cursor: pointer;
+        font-size: 16px;
+        display: flex; align-items: center; justify-content: center;
+        transition: all 0.2s; flex-shrink: 0;
+    }
+    
+    .file-card-remove:hover { background: var(--error); color: white; }
+    
+    @media (max-width: 768px) {
+        .image-gallery { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+        .drop-zone { padding: 30px 15px !important; }
+        .upload-icon { font-size: 48px !important; }
+    }
+    
+    @media (max-width: 480px) {
+        .image-gallery { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 6px; }
+    }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    
+    const ALLOWED_EXTENSIONS = [
+        'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg',
+        'pdf', 'docx', 'doc', 'odt', 'txt', 'md', 'csv', 'json', 'pptx',
+        'html', 'css', 'js', 'py', 'xml', 'ini', 'cfg', 'log', 'jar',
+        'mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac',
+        'mp4', 'webm', 'mov', 'avi', 'mkv',
+        'zip', 'rar', '7z', 'tar', 'gz',
+        'url', 'webloc', 'desktop',
+        'stl', 'obj', 'gltf', 'glb', 'ply', 'fbx', '3mf', 'dae',
+        'tga', 'dds', 'tiff', 'mtl'
+    ];
+    
+    const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'];
+    
+    let uploadMode = 'simple';
+    let selectedFiles = [];
+    let batchId = null;
+    const MAX_FILES = 10;
+    const MAX_SIMPLE_SIZE = 100 * 1024 * 1024;
+    
+    const simpleModeBtn = document.getElementById('simple-mode-btn');
+    const chunkModeBtn = document.getElementById('chunk-mode-btn');
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const selectBtn = document.getElementById('select-files-btn');
+    const fileNameDisplay = document.getElementById('file-name');
+    const previewContainer = document.getElementById('preview-container');
+    const uploadForm = document.getElementById('upload-form');
+    const submitBtn = document.getElementById('submit-btn');
+    
+    const chunkProgressWrapper = document.getElementById('chunk-progress-wrapper');
+    const chunkProgressBar = document.getElementById('chunk-progress-bar');
+    const chunkProgressPercent = document.getElementById('chunk-progress-percent');
+    const chunkProgressStatus = document.getElementById('chunk-progress-status');
+    const chunkDetail = document.getElementById('chunk-detail');
+    
+    const simpleProgressWrapper = document.getElementById('simple-progress-wrapper');
+    const simpleProgressBar = document.getElementById('simple-progress-bar');
+    const simpleProgressPercent = document.getElementById('simple-progress-percent');
+    const simpleProgressStatus = document.getElementById('simple-progress-status');
+    
+    // Режимы
+    simpleModeBtn.addEventListener('click', () => {
+        uploadMode = 'simple';
+        simpleModeBtn.classList.add('active');
+        chunkModeBtn.classList.remove('active');
+    });
+    
+    chunkModeBtn.addEventListener('click', () => {
+        uploadMode = 'chunk';
+        chunkModeBtn.classList.add('active');
+        simpleModeBtn.classList.remove('active');
+    });
+    
+    // Выбор файлов
+    if (selectBtn && fileInput) {
+        selectBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (selectedFiles.length < MAX_FILES) fileInput.click();
+        };
+    }
+    
+    if (dropZone && fileInput) {
+        dropZone.addEventListener('click', () => {
+            if (selectedFiles.length < MAX_FILES) fileInput.click();
+        });
+        
+        ['dragenter', 'dragover'].forEach(e => {
+            dropZone.addEventListener(e, (ev) => {
+                ev.preventDefault();
+                dropZone.classList.add('drag-active');
+            });
+        });
+        
+        ['dragleave', 'drop'].forEach(e => {
+            dropZone.addEventListener(e, (ev) => {
+                ev.preventDefault();
+                dropZone.classList.remove('drag-active');
+            });
+        });
+        
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const files = e.dataTransfer.files;
+            if (files.length > 0) addFiles(files);
+        });
+    }
+    
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) addFiles(e.target.files);
+            fileInput.value = '';
+        });
+    }
+    
+    function isExtensionAllowed(filename) {
+        const ext = filename.split('.').pop().toLowerCase();
+        return ALLOWED_EXTENSIONS.includes(ext);
+    }
+    
+    function isImage(filename) {
+        const ext = filename.split('.').pop().toLowerCase();
+        return IMAGE_EXTENSIONS.includes(ext);
+    }
+    
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+    
+    function addFiles(newFiles) {
+        const filesArray = Array.from(newFiles);
+        const validFiles = filesArray.filter(f => isExtensionAllowed(f.name));
+        const invalidFiles = filesArray.filter(f => !isExtensionAllowed(f.name));
+        
+        if (invalidFiles.length > 0) {
+            alert(`Файлы не поддерживаются: ${invalidFiles.map(f => f.name).join(', ')}`);
+        }
+        
+        if (validFiles.length === 0) return;
+        
+        const availableSlots = MAX_FILES - selectedFiles.length;
+        const filesToAdd = validFiles.slice(0, availableSlots);
+        selectedFiles = [...selectedFiles, ...filesToAdd];
+        
+        updateFileInput();
+        updateDisplay();
+    }
+    
+    function updateFileInput() {
+        const dt = new DataTransfer();
+        selectedFiles.forEach(f => dt.items.add(f));
+        fileInput.files = dt.files;
+    }
+    
+    function updateDisplay() {
+        if (!previewContainer) return;
+        
+        if (selectedFiles.length === 0) {
+            fileNameDisplay.innerHTML = 'Файлы не выбраны';
+            previewContainer.innerHTML = '';
+            previewContainer.className = 'preview-container';
+            submitBtn.style.display = 'none';
+            return;
+        }
+        
+        const totalSize = selectedFiles.reduce((sum, f) => sum + f.size, 0);
+        fileNameDisplay.innerHTML = `Выбрано: ${selectedFiles.length} файлов | Размер: ${formatFileSize(totalSize)}`;
+        
+        const hasImages = selectedFiles.some(f => isImage(f.name));
+        const allImages = selectedFiles.every(f => isImage(f.name));
+        
+        previewContainer.innerHTML = '';
+        
+        if (allImages) {
+            // Только картинки — галерея
+            previewContainer.className = 'image-gallery';
+            previewContainer.style.maxHeight = '400px';
+            previewContainer.style.overflowY = 'auto';
+            
+            selectedFiles.forEach((file, index) => {
+                const card = document.createElement('div');
+                card.className = 'gallery-item';
+                
+                const img = document.createElement('img');
+                img.alt = file.name;
+                
+                const info = document.createElement('div');
+                info.className = 'gallery-info';
+                info.innerHTML = `<div class="gallery-name">${file.name}</div><div class="gallery-size">${formatFileSize(file.size)}</div>`;
+                
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'gallery-remove';
+                removeBtn.innerHTML = '&times;';
+                removeBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    selectedFiles.splice(index, 1);
+                    updateFileInput();
+                    updateDisplay();
+                };
+                
+                const reader = new FileReader();
+                reader.onload = (e) => { img.src = e.target.result; };
+                reader.readAsDataURL(file);
+                
+                card.appendChild(img);
+                card.appendChild(info);
+                card.appendChild(removeBtn);
+                previewContainer.appendChild(card);
+            });
+        } else if (hasImages) {
+            // Смешанный режим — галерея + список
+            previewContainer.className = 'preview-container';
+            previewContainer.style.maxHeight = '400px';
+            previewContainer.style.overflowY = 'auto';
+            
+            // Сначала картинки в мини-галерее
+            const imageFiles = selectedFiles.filter(f => isImage(f.name));
+            if (imageFiles.length > 0) {
+                const galleryRow = document.createElement('div');
+                galleryRow.style.cssText = 'display: flex; gap: 8px; overflow-x: auto; padding: 8px 0;';
+                
+                imageFiles.forEach((file, imgIdx) => {
+                    const thumb = document.createElement('div');
+                    thumb.style.cssText = 'position: relative; width: 80px; height: 80px; border-radius: 8px; overflow: hidden; flex-shrink: 0; border: 1px solid var(--glass-border);';
+                    
+                    const img = document.createElement('img');
+                    img.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
+                    
+                    const reader = new FileReader();
+                    reader.onload = (e) => { img.src = e.target.result; };
+                    reader.readAsDataURL(file);
+                    
+                    const removeBtn = document.createElement('button');
+                    removeBtn.innerHTML = '&times;';
+                    removeBtn.style.cssText = 'position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; border-radius: 50%; background: rgba(239,68,68,0.9); color: white; border: none; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center;';
+                    removeBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        const realIdx = selectedFiles.indexOf(file);
+                        if (realIdx > -1) {
+                            selectedFiles.splice(realIdx, 1);
+                            updateFileInput();
+                            updateDisplay();
+                        }
+                    };
+                    
+                    thumb.appendChild(img);
+                    thumb.appendChild(removeBtn);
+                    galleryRow.appendChild(thumb);
+                });
+                
+                previewContainer.appendChild(galleryRow);
+            }
+            
+            // Затем список не-картинок
+            selectedFiles.filter(f => !isImage(f.name)).forEach((file, idx) => {
+                const card = createFileCard(file, selectedFiles.indexOf(file));
+                previewContainer.appendChild(card);
+            });
+        } else {
+            // Только список
+            previewContainer.className = 'preview-container';
+            previewContainer.style.maxHeight = '300px';
+            previewContainer.style.overflowY = 'auto';
+            
+            selectedFiles.forEach((file, idx) => {
+                const card = createFileCard(file, idx);
+                previewContainer.appendChild(card);
+            });
+        }
+        
+        submitBtn.style.display = 'block';
+    }
+    
+    function createFileCard(file, index) {
+        const card = document.createElement('div');
+        card.className = 'file-card';
+        
+        const icon = document.createElement('div');
+        icon.className = 'file-card-icon';
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(ext)) icon.textContent = '#';
+        else if (['mp3', 'wav', 'ogg', 'flac', 'aac'].includes(ext)) icon.textContent = '#';
+        else if (['pdf'].includes(ext)) icon.textContent = '#';
+        else if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) icon.textContent = '#';
+        else icon.textContent = '#';
+        
+        const info = document.createElement('div');
+        info.className = 'file-card-info';
+        info.innerHTML = `<div class="file-card-name">${file.name}</div><div class="file-card-meta">${formatFileSize(file.size)} - .${ext.toUpperCase()}</div>`;
+        
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'file-card-remove';
+        removeBtn.innerHTML = '&times;';
+        removeBtn.onclick = () => {
+            const realIdx = selectedFiles.indexOf(file);
+            if (realIdx > -1) {
+                selectedFiles.splice(realIdx, 1);
+                updateFileInput();
+                updateDisplay();
+            }
+        };
+        
+        card.appendChild(icon);
+        card.appendChild(info);
+        card.appendChild(removeBtn);
+        
+        return card;
+    }
+    
+    // Отправка формы
+    uploadForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (selectedFiles.length === 0) {
+            alert('Выберите файлы для загрузки');
+            return;
+        }
+        uploadForm.submit();
+    });
+});
+</script>
+{% endblock %}

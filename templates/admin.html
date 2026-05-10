@@ -1,0 +1,862 @@
+{% extends "base.html" %}
+{% block title %}Админ-панель{% endblock %}
+
+{% block content %}
+<div class="admin-wrapper">
+    
+    <!-- Заголовок -->
+    <div class="admin-header">
+        <div class="admin-title">
+            <div class="admin-icon">
+                <i class="fa-solid fa-shield"></i>
+            </div>
+            <div class="admin-title-text">
+                <h1>Панель управления</h1>
+                <p>
+                    <i class="fa-solid fa-calendar"></i>
+                    {{ now|localtime }}
+                </p>
+            </div>
+        </div>
+        <div class="admin-badge">
+            <i class="fa-solid fa-crown"></i>
+            Администратор
+            <span style="width: 8px; height: 8px; background: var(--success); border-radius: 50%; margin-left: 8px;"></span>
+        </div>
+    </div>
+
+    <!-- Онлайн-пользователи (новая карточка) -->
+    <div class="online-stats-card">
+        <div class="online-header">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div class="online-pulse"></div>
+                <h3 style="margin: 0; font-size: 16px;">
+                    <i class="fa-solid fa-wifi"></i> Сейчас онлайн
+                </h3>
+            </div>
+            <span id="onlineCount" class="online-badge">0</span>
+        </div>
+        
+        <div id="onlineUsersList" class="online-users-grid">
+            <div style="color: var(--text-muted); font-size: 13px; padding: 12px; text-align: center;">
+                <i class="fa-solid fa-spinner fa-spin"></i> Загрузка...
+            </div>
+        </div>
+        
+        <div class="online-footer">
+            <i class="fa-regular fa-clock"></i> Обновляется в реальном времени
+        </div>
+    </div>
+
+    <!-- Статистика -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-header">
+                <div class="stat-icon">
+                    <i class="fa-solid fa-users"></i>
+                </div>
+                <span class="stat-label">Всего</span>
+            </div>
+            <div class="stat-value">{{ total_users }}</div>
+            <div class="stat-trend positive">
+                <i class="fa-solid fa-arrow-up"></i>
+                пользователей
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-header">
+                <div class="stat-icon">
+                    <i class="fa-solid fa-file"></i>
+                </div>
+                <span class="stat-label">Файлов</span>
+            </div>
+            <div class="stat-value">{{ total_files }}</div>
+            <div class="stat-trend">
+                <i class="fa-solid fa-hard-drive"></i>
+                в хранилище
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-header">
+                <div class="stat-icon">
+                    <i class="fa-solid fa-hard-drive"></i>
+                </div>
+                <span class="stat-label">Занято</span>
+            </div>
+            {% set total_size = users|sum(attribute='files', start=[])|sum(attribute='file_size') %}
+            <div class="stat-value">{{ (total_size / 1024 / 1024 / 1024)|round(2) }}</div>
+            <div class="stat-trend">
+                ГБ из {{ (max_content_length / 1024 / 1024 / 1024)|round }} ГБ
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-header">
+                <div class="stat-icon">
+                    <i class="fa-solid fa-crown"></i>
+                </div>
+                <span class="stat-label">Админы</span>
+            </div>
+            <div class="stat-value">{{ users|selectattr('role', 'equalto', 'admin')|list|length }}</div>
+            <div class="stat-trend">
+                <i class="fa-solid fa-user"></i>
+                {{ users|selectattr('role', 'equalto', 'user')|list|length }} обычных
+            </div>
+        </div>
+    </div>
+
+    <!-- Быстрые действия -->
+    <div class="quick-actions-grid">
+        <a href="{{ url_for('admin_all_files') }}" class="quick-action-card">
+            <div class="quick-action-icon">
+                <i class="fa-solid fa-file"></i>
+            </div>
+            <div class="quick-action-title">Все файлы</div>
+            <div class="quick-action-subtitle">Управление файлами</div>
+        </a>
+        
+        <a href="{{ url_for('lan_chat') }}" class="quick-action-card">
+            <div class="quick-action-icon">
+                <i class="fa-solid fa-comments"></i>
+            </div>
+            <div class="quick-action-title">Чат</div>
+            <div class="quick-action-subtitle">Общение в LAN</div>
+        </a>
+        
+        <a href="{{ url_for('index') }}" class="quick-action-card">
+            <div class="quick-action-icon">
+                <i class="fa-solid fa-house"></i>
+            </div>
+            <div class="quick-action-title">На главную</div>
+            <div class="quick-action-subtitle">Вернуться на сайт</div>
+        </a>
+        
+        <a href="{{ url_for('logout') }}" class="quick-action-card">
+            <div class="quick-action-icon">
+                <i class="fa-solid fa-sign-out-alt"></i>
+            </div>
+            <div class="quick-action-title">Выйти</div>
+            <div class="quick-action-subtitle">Завершить сессию</div>
+        </a>
+    </div>
+
+    <!-- Поиск -->
+    <div class="search-section">
+        <div class="search-container">
+            <input type="text" id="userSearch" class="search-input" placeholder="Поиск по имени или email...">
+            <button class="search-btn" onclick="filterUsers()">
+                <i class="fa-solid fa-search"></i>
+                Найти
+            </button>
+        </div>
+    </div>
+
+    <!-- Таблица пользователей -->
+    <div class="table-container">
+        <div class="table-header">
+            <div class="table-title">
+                <div class="table-title-icon">
+                    <i class="fa-solid fa-users"></i>
+                </div>
+                <h2>Управление пользователями</h2>
+            </div>
+            <div class="table-stats">
+                <span class="stat-pill active">
+                    <i class="fa-solid fa-circle-check"></i>
+                    {{ users|selectattr('is_blocked', 'equalto', false)|list|length }} активных
+                </span>
+                <span class="stat-pill blocked">
+                    <i class="fa-solid fa-ban"></i>
+                    {{ users|selectattr('is_blocked', 'equalto', true)|list|length }} заблокированных
+                </span>
+            </div>
+        </div>
+        
+        <table class="admin-table" id="usersTable">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Пользователь</th>
+                    <th>Email</th>
+                    <th>Роль</th>
+                    <th>Статус</th>
+                    <th>Файлы</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr class="user-row" data-username="{{ user.username|lower }}" data-email="{{ user.email|lower }}">
+                    <td style="color: var(--text-muted); font-family: monospace;">#{{ user.id }}</td>
+                    <td>
+                        <div class="user-info">
+                            {% if user.avatar %}
+                            <img src="{{ url_for('avatar', filename=user.avatar) }}" class="user-avatar" data-avatar-url="{{ url_for('avatar', filename=user.avatar) }}" data-username="{{ user.username }}">
+                            {% else %}
+                            <div class="user-avatar-placeholder" data-avatar-url="{{ url_for('static', filename='default_avatar.png') }}" data-username="{{ user.username }}">
+                                <i class="fa-solid fa-user"></i>
+                            </div>
+                            {% endif %}
+                            <div class="user-details">
+                                <span class="user-name">{{ user.username }}</span>
+                                <span class="user-id">ID: {{ user.id }}</span>
+                            </div>
+                        </div>
+                    </td>
+                    <td style="color: var(--text-muted);">{{ user.email }}</td>
+                    <td>
+                        <span class="badge {% if user.role == 'admin' %}badge-admin{% else %}badge-user{% endif %}">
+                            {% if user.role == 'admin' %}
+                                <i class="fa-solid fa-crown"></i> Админ
+                            {% else %}
+                                <i class="fa-solid fa-user"></i> Пользователь
+                            {% endif %}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="badge {% if user.is_blocked %}badge-blocked{% else %}badge-active{% endif %}">
+                            {% if user.is_blocked %}
+                                <i class="fa-solid fa-ban"></i> Заблокирован
+                            {% else %}
+                                <i class="fa-solid fa-circle-check"></i> Активен
+                            {% endif %}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="file-counter">
+                            <i class="fa-solid fa-file"></i>
+                            {{ user.files|length }}
+                        </span>
+                    </td>
+                    <td>
+                        <div class="action-group" style="display: flex; gap: 5px;">
+                            <a href="{{ url_for('profile', user_id=user.id) }}" 
+                               class="icon-btn view" title="Просмотр профиля">
+                                <i class="fa-solid fa-eye"></i>
+                            </a>
+                            
+                            <form action="{{ url_for('admin_toggle_block', user_id=user.id) }}"
+                                  method="POST"
+                                  style="display: inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" 
+                                        class="icon-btn {% if user.is_blocked %}unblock{% else %}block{% endif %}"
+                                        title="{% if user.is_blocked %}Разблокировать{% else %}Заблокировать{% endif %}"
+                                        style="border-color: var(--glass-border);">
+                                    {% if user.is_blocked %}
+                                        <i class="fa-solid fa-circle-check" style="color: var(--success);"></i>
+                                    {% else %}
+                                        <i class="fa-solid fa-ban" style="color: var(--error);"></i>
+                                    {% endif %}
+                                </button>
+                            </form>
+
+                            <button onclick='showDeleteModal({{ user.id }}, "{{ user.username }}")' 
+                                    class="icon-btn delete"
+                                    title="Удалить пользователя"
+                                    style="border-color: var(--glass-border);">
+                                <i class="fa-solid fa-trash-can" style="color: var(--error);"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        
+        {% if not users %}
+        <div class="empty-state">
+            <i class="fa-solid fa-face-frown"></i>
+            <h3>Пользователи не найдены</h3>
+            <p>В системе пока нет зарегистрированных пользователей</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Системная информация -->
+    <div class="system-info-grid">
+        <div class="info-card">
+            <div class="info-icon">
+                <i class="fa-solid fa-database"></i>
+            </div>
+            <div class="info-content">
+                <div class="info-label">Всего записей</div>
+                <div class="info-value">{{ total_users + total_files }}</div>
+            </div>
+        </div>
+        
+        <div class="info-card">
+            <div class="info-icon">
+                <i class="fa-solid fa-clock"></i>
+            </div>
+            <div class="info-content">
+                <div class="info-label">Текущее время</div>
+                <div class="info-value">{{ now|localtime }}</div>
+            </div>
+        </div>
+        
+        <div class="info-card">
+            <div class="info-icon">
+                <i class="fa-solid fa-hard-drive"></i>
+            </div>
+            <div class="info-content">
+                <div class="info-label">Средний размер файла</div>
+                <div class="info-value">
+                    {% if total_files > 0 %}
+                        {{ (total_size / total_files / 1024)|round(1) }} KB
+                    {% else %}
+                        0 KB
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <div class="info-card">
+            <div class="info-icon">
+                <i class="fa-solid fa-calendar"></i>
+            </div>
+            <div class="info-content">
+                <div class="info-label">Последняя активность</div>
+                <div class="info-value">
+                    {% set last_active = users|map(attribute='last_seen')|select|max %}
+                    {% if last_active %}
+                        {{ last_active|localtime }}
+                    {% else %}
+                        Нет данных
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно подтверждения удаления -->
+<div id="deleteModal" class="custom-modal">
+    <div class="modal-content" style="max-width: 400px;">
+        <h4>🗑 Удаление пользователя</h4>
+        <p id="deleteMessage">Вы уверены, что хотите удалить пользователя?</p>
+        <form id="deleteForm" method="POST" style="display: none;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        </form>
+        <div class="modal-buttons">
+            <button class="modal-btn" onclick="closeDeleteModal()">Отмена</button>
+            <button class="modal-btn delete" onclick="confirmDelete()" style="background: var(--error); color: white;">Удалить</button>
+        </div>
+    </div>
+</div>
+
+<style>
+/* ========== СТИЛИ ДЛЯ ОНЛАЙН-КАРТОЧКИ ========== */
+.online-stats-card {
+    background: linear-gradient(135deg, var(--glass-bg) 0%, rgba(34, 197, 94, 0.1) 100%);
+    border-radius: 20px;
+    padding: 18px 20px;
+    margin-bottom: 24px;
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(10px);
+}
+
+.online-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+}
+
+.online-pulse {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    background: #22c55e;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+    margin-right: 6px;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.2); }
+}
+
+.online-badge {
+    background: var(--accent);
+    padding: 4px 14px;
+    border-radius: 30px;
+    font-size: 16px;
+    font-weight: bold;
+    color: white;
+    transition: transform 0.2s ease;
+    display: inline-block;
+}
+
+.online-users-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    max-height: 130px;
+    overflow-y: auto;
+    padding: 4px 0;
+    margin-bottom: 12px;
+}
+
+.online-users-grid::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+}
+
+.online-users-grid::-webkit-scrollbar-track {
+    background: var(--glass-border);
+    border-radius: 10px;
+}
+
+.online-users-grid::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 10px;
+}
+
+.online-user-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px 6px 8px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 40px;
+    font-size: 13px;
+    transition: all 0.2s ease;
+    cursor: default;
+}
+
+.online-user-chip:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent);
+    background: rgba(56, 189, 248, 0.1);
+}
+
+.online-user-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.online-user-avatar-placeholder {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--glass-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.online-user-name {
+    font-weight: 500;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.online-badge-admin {
+    font-size: 9px;
+    padding: 2px 6px;
+    background: var(--accent);
+    border-radius: 20px;
+    color: white;
+}
+
+.online-footer {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-align: right;
+    border-top: 1px solid var(--glass-border);
+    padding-top: 10px;
+    margin-top: 4px;
+}
+
+/* ========== СТИЛИ ДЛЯ ПРЕВЬЮ АВАТАРОК ========== */
+.avatar-tooltip {
+    position: fixed;
+    z-index: 10000;
+    pointer-events: none;
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    border-radius: 16px;
+    padding: 8px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3), 0 0 0 1px var(--glass-border);
+    transform: scale(0.9);
+    opacity: 0;
+    transition: all 0.2s ease;
+}
+
+.avatar-tooltip.show {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.avatar-tooltip img {
+    width: 120px;
+    height: 120px;
+    border-radius: 12px;
+    object-fit: cover;
+    display: block;
+}
+
+.avatar-tooltip .tooltip-name {
+    text-align: center;
+    padding: 8px 8px 4px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text);
+    border-top: 1px solid var(--glass-border);
+    margin-top: 6px;
+}
+
+/* Анимация для аватарок */
+.user-avatar, .user-avatar-placeholder {
+    cursor: pointer;
+    transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.user-avatar:hover, .user-avatar-placeholder:hover {
+    transform: scale(1.05);
+    filter: brightness(1.05);
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    .online-user-chip {
+        padding: 4px 10px 4px 6px;
+        font-size: 11px;
+    }
+    
+    .online-user-avatar, .online-user-avatar-placeholder {
+        width: 22px;
+        height: 22px;
+    }
+    
+    .online-user-name {
+        max-width: 80px;
+    }
+}
+</style>
+
+<script>
+// ========== ФИЛЬТРАЦИЯ ПОЛЬЗОВАТЕЛЕЙ ==========
+function filterUsers() {
+    const searchInput = document.getElementById('userSearch');
+    const filter = searchInput.value.toLowerCase();
+    const rows = document.querySelectorAll('.user-row');
+    
+    rows.forEach(row => {
+        const username = row.getAttribute('data-username') || '';
+        const email = row.getAttribute('data-email') || '';
+        
+        if (username.includes(filter) || email.includes(filter)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+
+document.getElementById('userSearch').addEventListener('keyup', function(e) {
+    if (e.key === 'Enter') {
+        filterUsers();
+    }
+});
+
+let searchTimeout;
+document.getElementById('userSearch').addEventListener('input', function() {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(filterUsers, 300);
+});
+
+// ========== МОДАЛЬНОЕ ОКНО УДАЛЕНИЯ ==========
+let deleteUserId = null;
+let deleteUsername = '';
+
+function showDeleteModal(userId, username) {
+    deleteUserId = userId;
+    deleteUsername = username;
+    document.getElementById('deleteMessage').textContent = `Вы уверены, что хотите удалить пользователя "${username}"? Это действие нельзя отменить.`;
+    document.getElementById('deleteModal').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+function closeDeleteModal() {
+    document.getElementById('deleteModal').style.display = 'none';
+    document.body.style.overflow = '';
+    deleteUserId = null;
+    deleteUsername = '';
+}
+
+function confirmDelete() {
+    if (deleteUserId) {
+        const form = document.getElementById('deleteForm');
+        form.action = "{{ url_for('admin_delete_user', user_id=0) }}".replace('0', deleteUserId);
+        form.submit();
+    }
+}
+
+window.onclick = function(event) {
+    if (event.target.classList.contains('custom-modal')) {
+        closeDeleteModal();
+    }
+};
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeDeleteModal();
+    }
+});
+
+// ========== ПРЕВЬЮ АВАТАРОК ПРИ НАВЕДЕНИИ ==========
+(function() {
+    let tooltip = null;
+    let hideTimeout = null;
+    let showTimeout = null;
+    
+    function createTooltip() {
+        if (tooltip) return tooltip;
+        tooltip = document.createElement('div');
+        tooltip.className = 'avatar-tooltip';
+        tooltip.innerHTML = `
+            <div class="tooltip-content">
+                <img id="tooltip-avatar" src="" alt="Avatar preview">
+                <div class="tooltip-name" id="tooltip-name"></div>
+            </div>
+        `;
+        document.body.appendChild(tooltip);
+        return tooltip;
+    }
+    
+    function showAvatarPreview(element, avatarUrl, username) {
+        if (hideTimeout) clearTimeout(hideTimeout);
+        if (showTimeout) clearTimeout(showTimeout);
+        
+        showTimeout = setTimeout(() => {
+            const tooltip = createTooltip();
+            const img = tooltip.querySelector('#tooltip-avatar');
+            const nameSpan = tooltip.querySelector('#tooltip-name');
+            
+            img.src = avatarUrl;
+            nameSpan.textContent = username || '';
+            
+            const rect = element.getBoundingClientRect();
+            let top = rect.top - 130;
+            let left = rect.left + (rect.width / 2) - 60;
+            
+            if (top < 10) top = rect.bottom + 10;
+            if (left < 10) left = 10;
+            if (left + 120 > window.innerWidth) left = window.innerWidth - 130;
+            
+            tooltip.style.top = top + 'px';
+            tooltip.style.left = left + 'px';
+            
+            requestAnimationFrame(() => {
+                tooltip.classList.add('show');
+            });
+        }, 300);
+    }
+    
+    function hideAvatarPreview() {
+        if (showTimeout) {
+            clearTimeout(showTimeout);
+            showTimeout = null;
+        }
+        hideTimeout = setTimeout(() => {
+            if (tooltip) {
+                tooltip.classList.remove('show');
+            }
+        }, 200);
+    }
+    
+    function initAvatarPreviews() {
+        const avatars = document.querySelectorAll('.user-avatar, .user-avatar-placeholder');
+        
+        avatars.forEach(avatar => {
+            const avatarUrl = avatar.getAttribute('data-avatar-url') || 
+                             (avatar.tagName === 'IMG' ? avatar.src : "{{ url_for('static', filename='default_avatar.png') }}");
+            const username = avatar.getAttribute('data-username') || 
+                            (avatar.closest('.user-row')?.querySelector('.user-name')?.textContent || 'Пользователь');
+            
+            avatar.removeEventListener('mouseenter', avatar._mouseEnterHandler);
+            avatar.removeEventListener('mouseleave', avatar._mouseLeaveHandler);
+            
+            avatar._mouseEnterHandler = () => showAvatarPreview(avatar, avatarUrl, username);
+            avatar._mouseLeaveHandler = () => hideAvatarPreview();
+            
+            avatar.addEventListener('mouseenter', avatar._mouseEnterHandler);
+            avatar.addEventListener('mouseleave', avatar._mouseLeaveHandler);
+        });
+    }
+    
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initAvatarPreviews);
+    } else {
+        initAvatarPreviews();
+    }
+    
+    window.refreshAvatarPreviews = initAvatarPreviews;
+})();
+
+// ========== УЛУЧШЕННЫЙ ОНЛАЙН-МОНИТОРИНГ ==========
+let onlineUpdateInterval = null;
+let heartbeatInterval = null;
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Отправка heartbeat
+function sendHeartbeat() {
+    fetch('{{ url_for("heartbeat") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        credentials: 'same-origin'
+    }).catch(e => console.log('Heartbeat error:', e));
+}
+
+async function fetchOnlineUsers() {
+    try {
+        const response = await fetch('{{ url_for("api_online_users") }}');
+        const data = await response.json();
+        
+        const countElement = document.getElementById('onlineCount');
+        if (countElement) {
+            const oldCount = parseInt(countElement.textContent) || 0;
+            countElement.textContent = data.count;
+            
+            // Анимация при изменении счётчика
+            if (data.count !== oldCount) {
+                countElement.style.transform = 'scale(1.2)';
+                countElement.style.backgroundColor = '#22c55e';
+                setTimeout(() => {
+                    if (countElement) {
+                        countElement.style.transform = 'scale(1)';
+                        countElement.style.backgroundColor = 'var(--accent)';
+                    }
+                }, 300);
+            }
+        }
+        
+        const listElement = document.getElementById('onlineUsersList');
+        if (listElement) {
+            if (data.count === 0) {
+                listElement.innerHTML = `
+                    <div style="color: var(--text-muted); font-size: 13px; padding: 12px; text-align center;">
+                        <i class="fa-regular fa-face-smile"></i> Никого нет в сети
+                    </div>`;
+            } else {
+                listElement.innerHTML = data.users.map(user => `
+                    <div class="online-user-chip" data-user-id="${user.id}">
+                        ${user.avatar ? 
+                            `<img src="${user.avatar}" class="online-user-avatar" onerror="this.src='{{ url_for('static', filename='default_avatar.png') }}'">` :
+                            `<div class="online-user-avatar-placeholder"><i class="fa-solid fa-user"></i></div>`
+                        }
+                        <span class="online-user-name">${escapeHtml(user.username)}</span>
+                        ${user.role === 'admin' ? '<span class="online-badge-admin"><i class="fa-solid fa-crown"></i></span>' : ''}
+                        ${user.in_chat ? '<span class="online-chat-badge" title="В чате"><i class="fa-regular fa-comment"></i></span>' : ''}
+                        <span class="online-time" title="Последняя активность">${user.last_seen || ''}</span>
+                    </div>
+                `).join('');
+            }
+        }
+        
+        // Обновляем превью аватарок для новых элементов
+        if (typeof window.refreshAvatarPreviews === 'function') {
+            window.refreshAvatarPreviews();
+        }
+        
+    } catch (error) {
+        console.error('Ошибка загрузки онлайн-пользователей:', error);
+        const listElement = document.getElementById('onlineUsersList');
+        if (listElement) {
+            listElement.innerHTML = `
+                <div style="color: var(--error); font-size: 13px; padding: 12px; text-align: center;">
+                    <i class="fa-solid fa-triangle-exclamation"></i> Ошибка подключения
+                </div>`;
+        }
+    }
+}
+
+function startOnlineMonitoring() {
+    // Первое обновление
+    fetchOnlineUsers();
+    
+    // Периодическое обновление каждые 10 секунд
+    if (onlineUpdateInterval) clearInterval(onlineUpdateInterval);
+    onlineUpdateInterval = setInterval(fetchOnlineUsers, 10000);
+    
+    // Heartbeat каждые 30 секунд (для точного отслеживания)
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+    sendHeartbeat(); // сразу
+    heartbeatInterval = setInterval(sendHeartbeat, 30000);
+    
+    // Обновляем активность при взаимодействии с сайтом
+    const activityEvents = ['click', 'scroll', 'keydown', 'mousemove'];
+    const activityHandler = () => sendHeartbeat();
+    activityEvents.forEach(event => {
+        document.removeEventListener(event, activityHandler);
+        document.addEventListener(event, activityHandler);
+    });
+}
+
+function stopOnlineMonitoring() {
+    if (onlineUpdateInterval) {
+        clearInterval(onlineUpdateInterval);
+        onlineUpdateInterval = null;
+    }
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        heartbeatInterval = null;
+    }
+}
+
+// Запускаем при загрузке страницы
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startOnlineMonitoring);
+} else {
+    startOnlineMonitoring();
+}
+
+// Останавливаем при уходе со страницы
+window.addEventListener('beforeunload', stopOnlineMonitoring);
+
+// ========== ПОДКЛЮЧЕНИЕ К SOCKET.IO ДЛЯ РЕАЛЬНОГО ВРЕМЕНИ ==========
+{% if socketio %}
+if (typeof io !== 'undefined') {
+    try {
+        const socket = io();
+        
+        socket.on('user_online_update', function(data) {
+            console.log('Socket.IO: Online users updated', data);
+            fetchOnlineUsers();
+        });
+        
+        socket.on('connect', function() {
+            console.log('Socket.IO connected for admin panel');
+            socket.emit('check_online');
+        });
+        
+        socket.on('disconnect', function() {
+            console.log('Socket.IO disconnected');
+        });
+    } catch (e) {
+        console.log('Socket.IO not available, using polling only');
+    }
+}
+{% endif %}
+</script>
+{% endblock %}

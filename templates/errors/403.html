@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}403 | Доступ запрещён{% endblock %}
+
+{% block content %}
+<div class="container error-page">
+
+    <div class="error-card">
+        <h1 class="error-code">403</h1>
+        <h2>Доступ запрещён</h2>
+
+        <p class="error-text">
+            У вас нет прав для просмотра этой страницы.
+        </p>
+
+        <a href="{{ url_for('index') }}" class="btn-action btn-view">
+            Вернуться на главную
+        </a>
+        <a href="javascript:history.back()" class="btn-action btn-secondary" style="margin-left: 10px;">
+            Назад
+        </a>
+    </div>
+
+</div>
+{% endblock %}
